@@ -1,13 +1,22 @@
 import pandas as pd
 import os
 import json
+import shutil
 from datetime import datetime
 
+# ====== File paths ======
+DATA_DIR = "data"
+BACKUP_DIR = "backups"
+
 # Storing data to file paths
-TRAIN_DATA_FILE = "trains.csv"
-BOOKING_DATA_FILE = "bookings.json"
+TRAIN_DATA_FILE = os.path.join(DATA_DIR, "trains.csv")
+BOOKING_DATA_FILE = os.path.join(DATA_DIR, "bookings.json")
 
 def initializing_files():
+    # Create data and backup directories if not exist
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
     # Initializing train data
     if not os.path.exists(TRAIN_DATA_FILE):
         train_data = {
@@ -24,6 +33,58 @@ def initializing_files():
     if not os.path.exists(BOOKING_DATA_FILE):
         with open(BOOKING_DATA_FILE, 'w') as file:
             json.dump([], file)
+
+# ====== Backup system ======
+def backup_file(file_path):
+    """Create a timestamped backup copy before overwriting any file."""
+    if os.path.exists(file_path):
+        filename = os.path.basename(file_path)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(BACKUP_DIR, f"{filename}_{timestamp}.bak")
+        shutil.copy(file_path, backup_path)
+        print(f"✅ Backup created: {backup_path}")
+
+# ====== Safe load & restore system ======
+def safe_load_json(file_path):
+    """Load JSON safely; restore from backup if corrupted."""
+    try:
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    except (json.JSONDecodeError, FileNotFoundError):
+        print(f"⚠️  Error reading {file_path}. Attempting restore from backup...")
+        backup_files = sorted(
+            [f for f in os.listdir(BACKUP_DIR) if os.path.basename(file_path) in f],
+            reverse=True
+        )
+        if backup_files:
+            latest_backup = os.path.join(BACKUP_DIR, backup_files[0])
+            shutil.copy(latest_backup, file_path)
+            print(f"✅ Restored {file_path} from {latest_backup}")
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        else:
+            print("❌ No backup found. Starting with empty data.")
+            return []
+
+def safe_load_csv(file_path):
+    """Load CSV safely; restore from backup if corrupted."""
+    try:
+        return pd.read_csv(file_path)
+    except Exception:
+        print(f"⚠️  Error reading {file_path}. Attempting restore from backup...")
+        backup_files = sorted(
+            [f for f in os.listdir(BACKUP_DIR) if os.path.basename(file_path) in f],
+            reverse=True
+        )
+        if backup_files:
+            latest_backup = os.path.join(BACKUP_DIR, backup_files[0])
+            shutil.copy(latest_backup, file_path)
+            print(f"✅ Restored {file_path} from {latest_backup}")
+            return pd.read_csv(file_path)
+        else:
+            print("❌ No backup found. Creating new train data.")
+            initializing_files()
+            return pd.read_csv(file_path)
 
 # Taking data from CSV
 def Load_train_data():
